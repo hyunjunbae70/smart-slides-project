@@ -132,13 +132,26 @@ async def generate_slides_endpoint(request: GenerateSlidesRequest):
     Raises:
         HTTPException: If slide generation fails
     """
+    # Validate input
+    if not request.query or not request.query.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Query cannot be empty. Please provide a prompt to generate slides."
+        )
+    
     try:
-        slides_data = generate_slides(request.query)
+        slides_data = generate_slides(request.query.strip())
         return slides_data
     except ValueError as e:
+        # Validation errors (e.g., missing API key, invalid response structure)
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating slides: {str(e)}")
+        # All other errors (OpenAI API errors, I/O errors, etc.) return 500
+        error_message = str(e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {error_message}"
+        )
 
 
 @app.websocket("/ws/chat/{client_id}")
@@ -155,11 +168,24 @@ async def websocket_chat_endpoint(websocket: WebSocket, client_id: str):
         websocket: The WebSocket connection
         client_id: Unique identifier for the client
     """
-    await manager.connect(websocket)
+    try:
+        await manager.connect(websocket)
+    except Exception as e:
+        # Handle connection errors
+        try:
+            await websocket.close(code=1011, reason=f"Connection error: {str(e)}")
+        except Exception:
+            pass
+        return
+    
     try:
         while True:
-            # Receive message from the client
-            data = await websocket.receive_text()
+            try:
+                # Receive message from the client
+                data = await websocket.receive_text()
+            except Exception as e:
+                # Handle I/O errors when receiving messages
+                raise WebSocketDisconnect(f"Error receiving message: {str(e)}")
             
             # Try to parse as JSON to check if it's a structured payload
             try:
@@ -178,7 +204,14 @@ async def websocket_chat_endpoint(websocket: WebSocket, client_id: str):
                             'value': payload['value']
                         }
                         # Broadcast the structured JSON payload to all clients
-                        await manager.broadcast_json(edit_payload)
+                        try:
+                            await manager.broadcast_json(edit_payload)
+                        except Exception as e:
+                            # Handle I/O errors during broadcast
+                            await websocket.send_text(json.dumps({
+                                'type': 'error',
+                                'message': f'Failed to broadcast edit: {str(e)}'
+                            }))
                     else:
                         # Invalid edit payload structure
                         await websocket.send_text(json.dumps({
@@ -187,19 +220,43 @@ async def websocket_chat_endpoint(websocket: WebSocket, client_id: str):
                         }))
                 else:
                     # JSON message but not an edit type, broadcast as-is
-                    await manager.broadcast_json(payload)
+                    try:
+                        await manager.broadcast_json(payload)
+                    except Exception as e:
+                        # Handle I/O errors during broadcast
+                        await websocket.send_text(json.dumps({
+                            'type': 'error',
+                            'message': f'Failed to broadcast message: {str(e)}'
+                        }))
                     
             except json.JSONDecodeError:
                 # Not JSON, treat as plain text chat message
                 # Broadcast the message to all other connected clients
                 # Format: "client_id: message"
                 message = f"{client_id}: {data}"
-                await manager.broadcast_to_others(message, websocket)
+                try:
+                    await manager.broadcast_to_others(message, websocket)
+                except Exception as e:
+                    # Handle I/O errors during broadcast
+                    await websocket.send_text(json.dumps({
+                        'type': 'error',
+                        'message': f'Failed to broadcast chat message: {str(e)}'
+                    }))
             
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+    except OSError as e:
+        # Handle I/O errors (network issues, connection problems)
+        manager.disconnect(websocket)
+        try:
+            await websocket.close(code=1011, reason=f"I/O error: {str(e)}")
+        except Exception:
+            pass
     except Exception as e:
         # Handle any other exceptions and disconnect
         manager.disconnect(websocket)
-        raise
+        try:
+            await websocket.close(code=1011, reason=f"Unexpected error: {str(e)}")
+        except Exception:
+            pass
 

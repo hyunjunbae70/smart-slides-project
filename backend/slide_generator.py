@@ -1,6 +1,7 @@
 import json
 import os
 from openai import OpenAI
+from openai import APIError, RateLimitError, APIConnectionError, APITimeoutError, AuthenticationError
 from backend.config import get_openai_api_key
 
 
@@ -54,10 +55,19 @@ Make sure the JSON is valid and properly formatted. Generate 3-8 slides based on
         )
         
         # Extract the JSON response
+        if not response.choices or len(response.choices) == 0:
+            raise Exception("OpenAI API returned an empty response")
+        
         content = response.choices[0].message.content
         
+        if not content:
+            raise Exception("OpenAI API returned empty content")
+        
         # Parse the JSON
-        slides_data = json.loads(content)
+        try:
+            slides_data = json.loads(content)
+        except json.JSONDecodeError as e:
+            raise Exception(f"Failed to parse JSON response from OpenAI: {str(e)}")
         
         # Validate the structure
         if "slides" not in slides_data:
@@ -81,8 +91,22 @@ Make sure the JSON is valid and properly formatted. Generate 3-8 slides based on
         
         return slides_data
         
-    except json.JSONDecodeError as e:
-        raise Exception(f"Failed to parse JSON response: {str(e)}")
+    except AuthenticationError as e:
+        raise Exception(f"OpenAI authentication failed. Please check your API key: {str(e)}")
+    except RateLimitError as e:
+        raise Exception(f"OpenAI API rate limit exceeded. Please try again later: {str(e)}")
+    except APIConnectionError as e:
+        raise Exception(f"Failed to connect to OpenAI API. Please check your internet connection: {str(e)}")
+    except APITimeoutError as e:
+        raise Exception(f"OpenAI API request timed out. Please try again: {str(e)}")
+    except APIError as e:
+        raise Exception(f"OpenAI API error occurred: {str(e)}")
+    except ValueError as e:
+        # Re-raise validation errors as-is
+        raise
+    except OSError as e:
+        raise Exception(f"I/O error occurred while communicating with OpenAI API: {str(e)}")
     except Exception as e:
-        raise Exception(f"Error generating slides: {str(e)}")
+        # Catch any other unexpected errors
+        raise Exception(f"Unexpected error generating slides: {str(e)}")
 
