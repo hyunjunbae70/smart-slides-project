@@ -1,8 +1,63 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+from typing import List
 from backend.slide_generator import generate_slides
 
 app = FastAPI(title="Smart Slides API", version="1.0.0")
+
+
+class ConnectionManager:
+    """
+    WebSocket connection manager to handle multiple concurrent connections.
+    """
+    
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+    
+    async def connect(self, websocket: WebSocket):
+        """
+        Accept a new WebSocket connection and add it to the active connections.
+        
+        Args:
+            websocket: The WebSocket connection to add
+        """
+        await websocket.accept()
+        self.active_connections.append(websocket)
+    
+    def disconnect(self, websocket: WebSocket):
+        """
+        Remove a WebSocket connection from the active connections.
+        
+        Args:
+            websocket: The WebSocket connection to remove
+        """
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+    
+    async def broadcast(self, message: str):
+        """
+        Send a message to all active WebSocket connections.
+        
+        Args:
+            message: The message string to broadcast to all clients
+        """
+        # Create a list of connections to remove if they fail
+        disconnected = []
+        
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except Exception:
+                # Connection is likely closed, mark for removal
+                disconnected.append(connection)
+        
+        # Remove disconnected connections
+        for connection in disconnected:
+            self.disconnect(connection)
+
+
+# Create a global connection manager instance
+manager = ConnectionManager()
 
 
 class GenerateSlidesRequest(BaseModel):
