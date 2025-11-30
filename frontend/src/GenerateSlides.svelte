@@ -139,6 +139,7 @@
     resize: vertical;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
     background-color: #fff;
+    color: #333;
   }
   
   .prompt-input:focus {

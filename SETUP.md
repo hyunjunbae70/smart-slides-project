@@ -5,15 +5,20 @@
 ### 1. Backend Setup (Terminal 1)
 
 ```bash
+# Make sure you're in the project root directory
+cd /path/to/smart-slides-project
+
 # Install Python dependencies
 pip install -r requirements.txt
 
 # Set your OpenAI API key (replace with your actual key)
 export OPENAI_API_KEY="sk-your-openai-api-key-here"
 
-# Start the backend server
+# Start the backend server (from project root)
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+**Important:** Make sure you're in the project root directory (where `requirements.txt` is located), not inside the `backend` folder!
 
 You should see:
 ```

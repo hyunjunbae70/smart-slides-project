@@ -37,12 +37,8 @@ AI-powered PowerPoint generator that creates presentation slides from natural la
    **Note:** For a permanent setup, add the environment variable to your system settings or use a `.env` file with a package like `python-dotenv`.
 
 3. **Start the FastAPI backend server:**
-   ```bash
-   cd backend
-   uvicorn main:app --reload --host 0.0.0.0 --port 8000
-   ```
    
-   Or from the project root:
+   **Important:** Run this command from the project root directory (where `requirements.txt` is located):
    ```bash
    uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
    ```

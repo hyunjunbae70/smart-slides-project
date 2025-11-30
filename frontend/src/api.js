@@ -168,8 +168,22 @@ export async function callGenerateAPI(prompt) {
     });
     
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: 'Unknown error occurred' }));
-      throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      let errorMessage = `HTTP error! status: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorData.message || errorMessage;
+      } catch (e) {
+        // If JSON parsing fails, try to get text
+        try {
+          const errorText = await response.text();
+          if (errorText) {
+            errorMessage = errorText;
+          }
+        } catch (e2) {
+          // If all else fails, use the status-based message
+        }
+      }
+      throw new Error(errorMessage);
     }
     
     const data = await response.json();
@@ -179,8 +193,18 @@ export async function callGenerateAPI(prompt) {
     
     return data;
   } catch (err) {
-    // Set error in store
-    error.set(err.message || 'Failed to generate slides');
+    // Log the full error for debugging
+    console.error('Error generating slides:', err);
+    
+    // Set error in store with more detailed message
+    let errorMsg = err.message || 'Failed to generate slides';
+    
+    // Check if it's a network error (backend not running)
+    if (err instanceof TypeError && err.message.includes('fetch')) {
+      errorMsg = 'Cannot connect to the server. Make sure the backend is running on http://localhost:8000';
+    }
+    
+    error.set(errorMsg);
     // Clear slide data on error
     slideData.set(null);
     throw err;
