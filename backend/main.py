@@ -54,6 +54,29 @@ class ConnectionManager:
         # Remove disconnected connections
         for connection in disconnected:
             self.disconnect(connection)
+    
+    async def broadcast_to_others(self, message: str, sender: WebSocket):
+        """
+        Send a message to all active WebSocket connections except the sender.
+        
+        Args:
+            message: The message string to broadcast to all other clients
+            sender: The WebSocket connection to exclude from the broadcast
+        """
+        # Create a list of connections to remove if they fail
+        disconnected = []
+        
+        for connection in self.active_connections:
+            if connection != sender:
+                try:
+                    await connection.send_text(message)
+                except Exception:
+                    # Connection is likely closed, mark for removal
+                    disconnected.append(connection)
+        
+        # Remove disconnected connections
+        for connection in disconnected:
+            self.disconnect(connection)
 
 
 # Create a global connection manager instance
@@ -93,4 +116,33 @@ async def generate_slides_endpoint(request: GenerateSlidesRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating slides: {str(e)}")
+
+
+@app.websocket("/ws/chat/{client_id}")
+async def websocket_chat_endpoint(websocket: WebSocket, client_id: str):
+    """
+    WebSocket endpoint for chat functionality.
+    Accepts connections, receives messages, and broadcasts them to all other connected clients.
+    
+    Args:
+        websocket: The WebSocket connection
+        client_id: Unique identifier for the client
+    """
+    await manager.connect(websocket)
+    try:
+        while True:
+            # Receive message from the client
+            data = await websocket.receive_text()
+            
+            # Broadcast the message to all other connected clients
+            # Format: "client_id: message"
+            message = f"{client_id}: {data}"
+            await manager.broadcast_to_others(message, websocket)
+            
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        # Handle any other exceptions and disconnect
+        manager.disconnect(websocket)
+        raise
 
