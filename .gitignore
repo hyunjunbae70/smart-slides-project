@@ -1,35 +1,24 @@
-#This the the canonical lab .gitignore file
-
-#ignore temp files
-*~
-
-#ignore pdf files (just keep source files)
-*.pdf
-
-#ignore junk files from latex output
-*.out
+# Logs
+logs
 *.log
-*.aux
-*.dvi
-*.ps
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-#ignore junk files from compiling C code
-*.o
-emulate
-assemble
+node_modules
+dist
+dist-ssr
+*.local
 
-#ignore junk files from compiling Haskell code
-*.hi
-
-#ignore junk files from compiling Java code
-*.class
-
-#ignore other junk files
-*.backup
-*.kate-swp
-*.swp
-*.snm
-*.vrb
-*.nav
-*.toc
-
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
