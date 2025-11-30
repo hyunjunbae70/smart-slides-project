@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
-from typing import List
+from typing import List, Dict, Any
+import json
 from backend.slide_generator import generate_slides
 
 app = FastAPI(title="Smart Slides API", version="1.0.0")
@@ -77,6 +78,28 @@ class ConnectionManager:
         # Remove disconnected connections
         for connection in disconnected:
             self.disconnect(connection)
+    
+    async def broadcast_json(self, payload: Dict[str, Any]):
+        """
+        Send a JSON payload to all active WebSocket connections.
+        
+        Args:
+            payload: The JSON-serializable dictionary to broadcast to all clients
+        """
+        # Create a list of connections to remove if they fail
+        disconnected = []
+        json_message = json.dumps(payload)
+        
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(json_message)
+            except Exception:
+                # Connection is likely closed, mark for removal
+                disconnected.append(connection)
+        
+        # Remove disconnected connections
+        for connection in disconnected:
+            self.disconnect(connection)
 
 
 # Create a global connection manager instance
@@ -121,8 +144,12 @@ async def generate_slides_endpoint(request: GenerateSlidesRequest):
 @app.websocket("/ws/chat/{client_id}")
 async def websocket_chat_endpoint(websocket: WebSocket, client_id: str):
     """
-    WebSocket endpoint for chat functionality.
-    Accepts connections, receives messages, and broadcasts them to all other connected clients.
+    WebSocket endpoint for chat functionality and slide editing.
+    Accepts connections, receives messages (text or JSON), and broadcasts them to all connected clients.
+    
+    Handles two types of messages:
+    1. Plain text messages: Broadcasts as "client_id: message" for chat
+    2. JSON messages with type 'edit': Broadcasts the structured payload for slide edits
     
     Args:
         websocket: The WebSocket connection
@@ -134,10 +161,40 @@ async def websocket_chat_endpoint(websocket: WebSocket, client_id: str):
             # Receive message from the client
             data = await websocket.receive_text()
             
-            # Broadcast the message to all other connected clients
-            # Format: "client_id: message"
-            message = f"{client_id}: {data}"
-            await manager.broadcast_to_others(message, websocket)
+            # Try to parse as JSON to check if it's a structured payload
+            try:
+                payload = json.loads(data)
+                
+                # Check if it's a slide edit message
+                if isinstance(payload, dict) and payload.get('type') == 'edit':
+                    # Validate the edit payload structure
+                    if 'slide_index' in payload and 'field' in payload and 'value' in payload:
+                        # Add client_id to the payload for context
+                        edit_payload = {
+                            'type': 'edit',
+                            'client_id': client_id,
+                            'slide_index': payload['slide_index'],
+                            'field': payload['field'],
+                            'value': payload['value']
+                        }
+                        # Broadcast the structured JSON payload to all clients
+                        await manager.broadcast_json(edit_payload)
+                    else:
+                        # Invalid edit payload structure
+                        await websocket.send_text(json.dumps({
+                            'type': 'error',
+                            'message': 'Invalid edit payload. Required fields: slide_index, field, value'
+                        }))
+                else:
+                    # JSON message but not an edit type, broadcast as-is
+                    await manager.broadcast_json(payload)
+                    
+            except json.JSONDecodeError:
+                # Not JSON, treat as plain text chat message
+                # Broadcast the message to all other connected clients
+                # Format: "client_id: message"
+                message = f"{client_id}: {data}"
+                await manager.broadcast_to_others(message, websocket)
             
     except WebSocketDisconnect:
         manager.disconnect(websocket)
