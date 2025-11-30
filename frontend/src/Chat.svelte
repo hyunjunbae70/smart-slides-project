@@ -5,17 +5,36 @@
   let messageInput = '';
   let messagesContainer;
   let currentClientId = null;
+  let lastMessageCount = 0;
   
-  // Get client ID on mount
+  // Function to scroll to bottom
+  function scrollToBottom() {
+    if (messagesContainer) {
+      requestAnimationFrame(() => {
+        if (messagesContainer) {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+      });
+    }
+  }
+  
+  // Get client ID on mount and scroll to bottom if messages exist
   onMount(() => {
     currentClientId = getClientId();
+    lastMessageCount = $messages.length;
+    // Scroll to bottom on initial mount if messages exist
+    if ($messages.length > 0) {
+      setTimeout(scrollToBottom, 100);
+    }
   });
   
   // Auto-scroll to bottom when new messages arrive
   $: if ($messages && messagesContainer) {
-    setTimeout(() => {
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }, 0);
+    const newMessageCount = $messages.length;
+    if (newMessageCount > lastMessageCount) {
+      scrollToBottom();
+      lastMessageCount = newMessageCount;
+    }
   }
   
   // Parse message format: "client_id: message"
@@ -93,9 +112,12 @@
       {#each $messages as message, index}
         {@const parsed = parseMessage(message)}
         {@const isOwn = isOwnMessage(parsed.clientId)}
-        <div class="message" class:own-message={isOwn}>
+        <div class="message" class:own-message={isOwn} data-message-index={index}>
           <div class="message-header">
-            <span class="client-id">{parsed.clientId}</span>
+            <span class="client-id">
+              {parsed.clientId}
+              <span class="colon">:</span>
+            </span>
             {#if isOwn}
               <span class="you-badge">You</span>
             {/if}
@@ -201,6 +223,7 @@
     flex-direction: column;
     gap: 1rem;
     background-color: #fafafa;
+    scroll-behavior: smooth;
   }
   
   .empty-state {
@@ -246,15 +269,21 @@
   }
   
   .client-id {
-    font-size: 0.75rem;
-    font-weight: 600;
-    opacity: 0.8;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    opacity: 1;
+    text-transform: none;
+    letter-spacing: 0.3px;
+    color: inherit;
   }
   
   .own-message .client-id {
-    opacity: 0.9;
+    opacity: 1;
+  }
+  
+  .colon {
+    margin-right: 0.25rem;
+    opacity: 0.7;
   }
   
   .you-badge {
